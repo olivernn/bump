@@ -1,0 +1,9 @@
+[package]
+name = "bump"
+version = "0.1.0"
+authors = ["Oliver Nightingale <oliver.nightingale1@gmail.com>"]
+
+[dependencies]
+docopt = "0.6"
+rustc-serialize = "0.3"
+semver = "0.2"
