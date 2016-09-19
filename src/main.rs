@@ -7,6 +7,7 @@ use std::io;
 use std::io::{Read, Write};
 use std::fmt;
 use std::error;
+use std::path::PathBuf;
 
 use docopt::Docopt;
 use semver::{Version, Identifier, SemVerError};
@@ -15,16 +16,17 @@ const USAGE: &'static str = "
 bump
 
 Usage:
-    bump init
-    bump major
-    bump minor
-    bump patch
-    bump build <build>
-    bump pre <pre>
-    bump
+    bump init [options]
+    bump major [options]
+    bump minor [options]
+    bump patch [options]
+    bump build <build> [options]
+    bump pre <pre> [options]
+    bump [options]
 
 Options:
     -h, --help           Show this screen
+    -f, --file=<file>    Specify the version file path
 ";
 
 #[derive(Debug, RustcDecodable)]
@@ -37,6 +39,35 @@ struct Args {
     arg_pre: String,
     cmd_build: bool,
     arg_build: String,
+    flag_file: Option<String>,
+}
+
+#[derive(Debug)]
+struct VersionFile {
+    path: PathBuf
+}
+
+impl VersionFile {
+    fn new(path: String) -> VersionFile {
+        VersionFile{
+            path: PathBuf::from(path)
+        }
+    }
+
+    fn read(&self) -> Result<Version, BumpError> {
+        let mut version_file = try!(File::open(&self.path));
+        let mut buffer = String::new();
+        try!(version_file.read_to_string(&mut buffer));
+        let version = try!(Version::parse(&buffer));
+
+        Ok(version)
+    }
+
+    fn write(&self, version: &Version) -> Result<(), BumpError> {
+        let mut version_file = try!(File::create(&self.path));
+        try!(write!(&mut version_file, "{}", version));
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -50,38 +81,41 @@ enum VersionIncrement {
 
 #[derive(Debug)]
 enum Command {
-    Init,
-    Print,
-    Bump(VersionIncrement),
+    Init(VersionFile),
+    Print(VersionFile),
+    Bump(VersionIncrement, VersionFile),
 }
 
 impl From<Args> for Command {
     fn from(args: Args) -> Command {
+        let version_path = args.flag_file.unwrap_or("VERSION".to_owned());
+        let version_file = VersionFile::new(version_path);
+
         if args.cmd_init {
-            return Command::Init
+            return Command::Init(version_file)
         }
 
         if args.cmd_major {
-            return Command::Bump(VersionIncrement::Major);
+            return Command::Bump(VersionIncrement::Major, version_file);
         }
 
         if args.cmd_minor {
-            return Command::Bump(VersionIncrement::Minor);
+            return Command::Bump(VersionIncrement::Minor, version_file);
         }
 
         if args.cmd_patch {
-            return Command::Bump(VersionIncrement::Patch);
+            return Command::Bump(VersionIncrement::Patch, version_file);
         }
 
         if args.cmd_pre {
-            return Command::Bump(VersionIncrement::Pre(args.arg_pre));
+            return Command::Bump(VersionIncrement::Pre(args.arg_pre), version_file);
         }
 
         if args.cmd_build {
-            return Command::Bump(VersionIncrement::Build(args.arg_build));
+            return Command::Bump(VersionIncrement::Build(args.arg_build), version_file);
         }
 
-        return Command::Print
+        return Command::Print(version_file)
     }
 }
 
@@ -89,6 +123,13 @@ impl From<Args> for Command {
 enum BumpError {
     Io(io::Error),
     SemVer(SemVerError)
+}
+
+impl BumpError {
+    fn exit(&self) -> ! {
+        println!("{}", self);
+        std::process::exit(1);
+    }
 }
 
 impl fmt::Display for BumpError {
@@ -128,35 +169,20 @@ impl From<SemVerError> for BumpError {
     }
 }
 
-fn write_version(version: &Version) -> Result<(), BumpError> {
-    let mut version_file = try!(File::create("VERSION"));
-    try!(write!(&mut version_file, "{}", version));
-    Ok(())
-}
-
-fn read_version() -> Result<Version, BumpError> {
-    let mut version_file = try!(File::open("VERSION"));
-    let mut buffer = String::new();
-    try!(version_file.read_to_string(&mut buffer));
-    let version = try!(Version::parse(&buffer));
-
-    Ok(version)
-}
-
-fn print() -> Result<(), BumpError> {
-    let version = try!(read_version());
+fn print(version_file: VersionFile) -> Result<(), BumpError> {
+    let version = try!(version_file.read());
     println!("{}", version);
     return Ok(());
 }
 
-fn init() -> Result<(), BumpError> {
+fn init(version_file: VersionFile) -> Result<(), BumpError> {
     let version = try!(Version::parse("0.0.0"));
-    try!(write_version(&version));
+    try!(version_file.write(&version));
     return Ok(());
 }
 
-fn bump(action: VersionIncrement) -> Result<(), BumpError> {
-    let mut version = try!(read_version());
+fn bump(action: VersionIncrement, version_file: VersionFile) -> Result<(), BumpError> {
+    let mut version = try!(version_file.read());
 
     match action {
         VersionIncrement::Major => version.increment_major(),
@@ -173,7 +199,8 @@ fn bump(action: VersionIncrement) -> Result<(), BumpError> {
         },
     }
 
-    try!(write_version(&version));
+    try!(version_file.write(&version));
+    println!("{}", version);
     return Ok(());
 }
 
@@ -183,10 +210,10 @@ fn main() {
         .unwrap_or_else(|e| e.exit());
 
     let result = match Command::from(args) {
-        Command::Print => print(),
-        Command::Init => init(),
-        Command::Bump(increment) => bump(increment)
+        Command::Print(version_file) => print(version_file),
+        Command::Init(version_file) => init(version_file),
+        Command::Bump(increment, version_file) => bump(increment, version_file)
     };
 
-    result.unwrap_or_else(|e| println!("{}", e));
+    result.unwrap_or_else(|e| e.exit());
 }
