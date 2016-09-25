@@ -2,15 +2,18 @@ extern crate semver;
 extern crate rustc_serialize;
 extern crate docopt;
 
-use std::fs::File;
-use std::io;
-use std::io::{Read, Write};
-use std::fmt;
-use std::error;
-use std::path::PathBuf;
+pub mod command;
+pub mod version_increment;
+pub mod version_file;
+pub mod error;
+
+use command::{Command, Args};
+use version_increment::VersionIncrement;
+use version_file::VersionFile;
+use error::BumpError;
 
 use docopt::Docopt;
-use semver::{Version, Identifier, SemVerError};
+use semver::{Version, Identifier};
 
 const USAGE: &'static str = "
 bump
@@ -28,146 +31,6 @@ Options:
     -h, --help           Show this screen
     -f, --file=<file>    Specify the version file path
 ";
-
-#[derive(Debug, RustcDecodable)]
-struct Args {
-    cmd_init: bool,
-    cmd_major: bool,
-    cmd_minor: bool,
-    cmd_patch: bool,
-    cmd_pre: bool,
-    arg_pre: String,
-    cmd_build: bool,
-    arg_build: String,
-    flag_file: Option<String>,
-}
-
-#[derive(Debug)]
-struct VersionFile {
-    path: PathBuf
-}
-
-impl VersionFile {
-    fn new(path: String) -> VersionFile {
-        VersionFile{
-            path: PathBuf::from(path)
-        }
-    }
-
-    fn read(&self) -> Result<Version, BumpError> {
-        let mut version_file = try!(File::open(&self.path));
-        let mut buffer = String::new();
-        try!(version_file.read_to_string(&mut buffer));
-        let version = try!(Version::parse(&buffer));
-
-        Ok(version)
-    }
-
-    fn write(&self, version: &Version) -> Result<(), BumpError> {
-        let mut version_file = try!(File::create(&self.path));
-        try!(write!(&mut version_file, "{}", version));
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-enum VersionIncrement {
-    Major,
-    Minor,
-    Patch,
-    Pre(String),
-    Build(String),
-}
-
-#[derive(Debug)]
-enum Command {
-    Init(VersionFile),
-    Print(VersionFile),
-    Bump(VersionIncrement, VersionFile),
-}
-
-impl From<Args> for Command {
-    fn from(args: Args) -> Command {
-        let version_path = args.flag_file.unwrap_or("VERSION".to_owned());
-        let version_file = VersionFile::new(version_path);
-
-        if args.cmd_init {
-            return Command::Init(version_file)
-        }
-
-        if args.cmd_major {
-            return Command::Bump(VersionIncrement::Major, version_file);
-        }
-
-        if args.cmd_minor {
-            return Command::Bump(VersionIncrement::Minor, version_file);
-        }
-
-        if args.cmd_patch {
-            return Command::Bump(VersionIncrement::Patch, version_file);
-        }
-
-        if args.cmd_pre {
-            return Command::Bump(VersionIncrement::Pre(args.arg_pre), version_file);
-        }
-
-        if args.cmd_build {
-            return Command::Bump(VersionIncrement::Build(args.arg_build), version_file);
-        }
-
-        return Command::Print(version_file)
-    }
-}
-
-#[derive(Debug)]
-enum BumpError {
-    Io(io::Error),
-    SemVer(SemVerError)
-}
-
-impl BumpError {
-    fn exit(&self) -> ! {
-        println!("{}", self);
-        std::process::exit(1);
-    }
-}
-
-impl fmt::Display for BumpError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            BumpError::Io(ref e) => write!(f, "IO Error: {}", e),
-            BumpError::SemVer(ref e) => write!(f, "SemVer Error: {}", e),
-        }
-    }
-}
-
-impl error::Error for BumpError {
-    fn description(&self) -> &str {
-        match *self {
-            BumpError::Io(ref e) => e.description(),
-            BumpError::SemVer(ref e) => e.description(),
-        }
-    }
-
-    fn cause(&self) -> Option<&error::Error> {
-        match *self {
-            BumpError::Io(ref e) => Some(e),
-            BumpError::SemVer(ref e) => Some(e),
-        }
-    }
-}
-
-impl From<io::Error> for BumpError {
-    fn from(e: io::Error) -> BumpError {
-        BumpError::Io(e)
-    }
-}
-
-impl From<SemVerError> for BumpError {
-    fn from(e: SemVerError) -> BumpError {
-        BumpError::SemVer(e)
-    }
-}
 
 fn print(version_file: VersionFile) -> Result<(), BumpError> {
     let version = try!(version_file.read());
