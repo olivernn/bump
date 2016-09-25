@@ -18,3 +18,4 @@ Options:
     -h, --help           Show this screen
     -f, --file=<file>    Specify the version file path
 ```
+
