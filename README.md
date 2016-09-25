@@ -4,6 +4,7 @@ A simple tool for managing project version files.
 
 ## Usage
 
+```
 Usage:
     bump init [options]
     bump major [options]
@@ -16,3 +17,4 @@ Usage:
 Options:
     -h, --help           Show this screen
     -f, --file=<file>    Specify the version file path
+```
