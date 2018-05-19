@@ -1,5 +1,6 @@
+#[macro_use]
+extern crate serde_derive;
 extern crate semver;
-extern crate rustc_serialize;
 extern crate docopt;
 
 pub mod command;
@@ -69,7 +70,7 @@ fn bump(action: VersionIncrement, version_file: VersionFile) -> Result<(), BumpE
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
-        .and_then(|d| d.decode())
+        .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
 
     let result = match Command::from(args) {

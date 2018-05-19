@@ -1,7 +1,7 @@
 use version_increment::VersionIncrement;
 use version_file::VersionFile;
 
-#[derive(Debug, RustcDecodable)]
+#[derive(Debug, Deserialize)]
 pub struct Args {
     cmd_init: bool,
     cmd_major: bool,
